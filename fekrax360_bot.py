@@ -1,46 +1,39 @@
-import os, telebot
+import telebot
+import requests
+import os
 
-# قراءة التوكن من متغير البيئة
 TOKEN = os.getenv("TOKEN")
-if not TOKEN:
-    raise RuntimeError("⚠️ TOKEN غير موجود! أضف متغير البيئة TOKEN قبل التشغيل.")
+bot = telebot.TeleBot(TOKEN)
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+# استخدم OpenAI أو أي API لتوليد الصور (هنا سنستخدم واجهة DALL-E عبر Render مثلاً)
+# لكن لتبسيط الشرح سنستخدم رابط توليد صور افتراضي كمثال
 
-@bot.message_handler(commands=['start'])
-def start(m):
-    bot.reply_to(m, "👋 مرحباً! اكتب /generate_news_photo للبدء.")
+def generate_image(prompt):
+    try:
+        response = requests.post(
+            "https://api-inference.huggingface.co/models/prompthero/openjourney",
+            headers={"Authorization": "Bearer hf_your_api_key"},
+            json={"inputs": prompt}
+        )
+        image_bytes = response.content
+        file_path = "generated_image.jpg"
+        with open(file_path, "wb") as f:
+            f.write(image_bytes)
+        return file_path
+    except Exception as e:
+        print("Error generating image:", e)
+        return None
 
-@bot.message_handler(commands=['generate_news_photo'])
-def ask_name(m):
-    bot.reply_to(m, "📸 أرسل اسم الشخص:")
-    bot.register_next_step_handler(m, ask_expression)
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    prompt = message.text
+    bot.send_message(message.chat.id, "⏳ جاري توليد الصورة...")
+    image_path = generate_image(prompt)
+    if image_path:
+        with open(image_path, "rb") as photo:
+            bot.send_photo(message.chat.id, photo, caption="✅ تم توليد الصورة بواسطة FekraX360")
+        os.remove(image_path)
+    else:
+        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء توليد الصورة. حاول مجددًا.")
 
-def ask_expression(m):
-    global person_name
-    person_name = m.text.strip()
-    bot.reply_to(m, "🙂 أرسل ملامح الوجه (angry, sad, confident...):")
-    bot.register_next_step_handler(m, ask_background)
-
-def ask_background(m):
-    global expression
-    expression = m.text.strip()
-    bot.reply_to(m, "🌆 أرسل نوع الخلفية (newsroom, destroyed buildings, angry Netanyahu...):")
-    bot.register_next_step_handler(m, generate_image)
-
-def generate_image(m):
-    background = m.text.strip()
-    prompt = f"""
-Create a realistic, high-quality news-style portrait featuring {person_name} as the main subject.
-Show the person from the chest up, facing the camera, with a {expression} expression.
-Lighting should be cinematic and balanced, focused mainly on the face.
-In the background, add a {background}, softly blurred and thematically connected to the subject.
-The overall tone must remain consistent with FekraX360’s visual identity — deep blue gradient base, cool cyan highlights, and smooth shadows.
-At the bottom, include the FekraX360 | News logo and the golden Palestine map emblem with social media icons in a clean strip.
-Maintain precise facial detail and a polished newsroom look.
-    """.strip()
-
-    bot.send_message(m.chat.id, "⏳ يتم تجهيز البرومبت...")
-    bot.send_message(m.chat.id, f"✅ البرومبت الجاهز:\n\n{prompt}")
-
-bot.infinity_polling(skip_pending=True)
+bot.polling(none_stop=True)
